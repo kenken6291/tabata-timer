@@ -118,6 +118,15 @@
     margin-top: -6px;
   }
 
+  .sound-note{
+    font-size: 11px;
+    color: var(--ink-dim);
+    text-align: center;
+    max-width: 300px;
+    line-height: 1.5;
+  }
+  .sound-note.hide{ display: none; }
+
   .timer-wrap{
     position: relative;
     width: min(78vw, 340px);
@@ -252,6 +261,9 @@
   .modal-actions button{ flex: 1; padding: 13px 10px; }
   #applySettingsBtn{ background: var(--ink); color: #16181d; border-color: var(--ink); }
 
+  .test-sound-row{ display:flex; gap:10px; margin-top: 4px; margin-bottom: 16px; }
+  .test-sound-row button{ flex:1; padding: 11px 8px; font-size: 13px; }
+
   @media (max-width: 360px){
     .controls{ grid-template-columns: 1fr 1.3fr 1fr; gap: 8px; }
     button{ padding: 15px 6px; }
@@ -292,6 +304,8 @@
     </div>
 
     <div class="dots" id="dots"></div>
+
+    <div class="sound-note" id="soundNote"></div>
   </main>
 
   <div class="controls">
@@ -321,6 +335,10 @@
         <label for="setsInput">セット数</label>
         <input type="number" id="setsInput" min="1" max="20" step="1">
         <div class="hint">変更を適用するとタイマーはリセットされます</div>
+      </div>
+
+      <div class="test-sound-row">
+        <button id="testSoundBtn" type="button">🔊 音声テスト</button>
       </div>
 
       <div class="modal-actions">
@@ -355,6 +373,27 @@
   // ---- 音声 ----
   let soundOn = true;
   let audioCtx = null;
+  const speechSupported = ("speechSynthesis" in window) && (typeof SpeechSynthesisUtterance !== "undefined");
+  let japaneseVoice = null;
+  let speechEverSucceeded = false;
+
+  function loadVoices(){
+    if(!speechSupported) return;
+    const voices = window.speechSynthesis.getVoices();
+    if(voices && voices.length){
+      japaneseVoice = voices.find(function(v){ return v.lang && v.lang.toLowerCase().indexOf("ja") === 0; }) || null;
+    }
+  }
+  if(speechSupported){
+    loadVoices();
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+    // iOS/Chromeのスリープ対策: 定期的にresume()を呼び音声エンジンの停止を防ぐ
+    setInterval(function(){
+      if(soundOn){
+        try{ window.speechSynthesis.resume(); }catch(e){}
+      }
+    }, 4000);
+  }
 
   function ensureAudioCtx(){
     if(!audioCtx){
@@ -368,7 +407,9 @@
   }
 
   function playBeep(freq, dur, delay){
-    if(!soundOn || !audioCtx) return;
+    if(!soundOn) return;
+    ensureAudioCtx();
+    if(!audioCtx) return;
     const startAt = audioCtx.currentTime + (delay || 0);
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
@@ -383,17 +424,50 @@
     osc.stop(startAt + dur + 0.02);
   }
 
-  function speak(text, delayMs){
-    if(!soundOn || !("speechSynthesis" in window)) return;
-    const run = function(){
-      window.speechSynthesis.cancel();
+  function doSpeakNow(text){
+    try{
+      window.speechSynthesis.resume();
       const u = new SpeechSynthesisUtterance(text);
       u.lang = "ja-JP";
       u.rate = 1.05;
+      u.pitch = 1;
       u.volume = 1;
+      if(japaneseVoice) u.voice = japaneseVoice;
+      u.onstart = function(){ speechEverSucceeded = true; };
       window.speechSynthesis.speak(u);
-    };
-    if(delayMs) setTimeout(run, delayMs); else run();
+    }catch(e){ /* 無視 */ }
+  }
+
+  function speak(text, delayMs){
+    if(!soundOn || !speechSupported) return;
+    function run(){
+      try{
+        if(window.speechSynthesis.speaking || window.speechSynthesis.pending){
+          window.speechSynthesis.cancel();
+          // cancel直後にspeakすると一部ブラウザ（iOS Safari等）で無音になるため
+          // 短いディレイを挟んでから発話する
+          setTimeout(function(){ doSpeakNow(text); }, 30);
+        } else {
+          doSpeakNow(text);
+        }
+      }catch(e){ /* 無視 */ }
+    }
+    if(delayMs){ setTimeout(run, delayMs); } else { run(); }
+  }
+
+  function stopSpeech(){
+    if(speechSupported){
+      try{ window.speechSynthesis.cancel(); }catch(e){}
+    }
+  }
+
+  // ユーザー操作（クリック/タップ）の直後・同期的に呼ぶことで
+  // iOS Safari 等の「ユーザー操作が必要」な音声制限を解除する
+  function primeAudio(label){
+    ensureAudioCtx();
+    if(soundOn && speechSupported){
+      doSpeakNow(label || "音声オン");
+    }
   }
 
   function announceCountIfNeeded(){
@@ -432,6 +506,7 @@
   const totalClock = document.getElementById("totalClock");
   const brandSub = document.getElementById("brandSub");
   const footerText = document.getElementById("footerText");
+  const soundNote = document.getElementById("soundNote");
   const startBtn = document.getElementById("startBtn");
   const resetBtn = document.getElementById("resetBtn");
   const skipBtn = document.getElementById("skipBtn");
@@ -446,6 +521,13 @@
   const setsInput = document.getElementById("setsInput");
   const applySettingsBtn = document.getElementById("applySettingsBtn");
   const cancelSettingsBtn = document.getElementById("cancelSettingsBtn");
+  const testSoundBtn = document.getElementById("testSoundBtn");
+
+  if(!speechSupported){
+    soundNote.textContent = "この端末のブラウザは音声読み上げに対応していないため、ビープ音のみ再生されます。";
+  } else {
+    soundNote.textContent = "音がしない場合は端末のマナーモード（サイレントスイッチ）と音量、LINE等のアプリ内ブラウザではなくSafari/Chromeで開いているかをご確認ください。";
+  }
 
   const RING_CIRC = 2 * Math.PI * 90;
   ringProgress.setAttribute("stroke-dasharray", RING_CIRC.toFixed(2));
@@ -479,7 +561,7 @@
 
   function updateDots(){
     const dots = dotsWrap.querySelectorAll(".dot");
-    dots.forEach((d,idx)=>{
+    dots.forEach(function(d, idx){
       const setIdx = idx+1;
       d.classList.remove("filled","current");
       if(phase !== "ready" && phase !== "done" && setIdx === currentSet){
@@ -601,17 +683,19 @@
 
   function handleStart(){
     if(phase === "done") return;
-    ensureAudioCtx();
     if(running){
       running = false;
       stopTicking();
-      if("speechSynthesis" in window) window.speechSynthesis.cancel();
+      stopSpeech();
       render();
       return;
     }
+    const isFreshStart = !hasStarted;
     running = true;
     hasStarted = true;
     lastAnnouncedRemaining = null;
+    // ユーザーのタップに同期させて音声/オーディオを解錠する
+    primeAudio(isFreshStart ? "スタート" : "再開");
     startTicking();
     render();
   }
@@ -619,7 +703,7 @@
   function handleReset(){
     running = false;
     stopTicking();
-    if("speechSynthesis" in window) window.speechSynthesis.cancel();
+    stopSpeech();
     phase = "ready";
     currentSet = 0;
     remaining = READY_SEC;
@@ -641,7 +725,22 @@
   function toggleSound(){
     soundOn = !soundOn;
     soundBtn.textContent = soundOn ? "🔊" : "🔇";
-    if(!soundOn && "speechSynthesis" in window) window.speechSynthesis.cancel();
+    if(soundOn){
+      primeAudio("音声オン");
+    } else {
+      stopSpeech();
+    }
+  }
+
+  function testSound(){
+    ensureAudioCtx();
+    if(!soundOn){
+      soundOn = true;
+      soundBtn.textContent = "🔊";
+    }
+    playBeep(880, 0.16);
+    playBeep(1046, 0.16, 0.14);
+    speak("音声のテストです", 260);
   }
 
   function openSettings(){
@@ -680,6 +779,7 @@
   settingsBtn.addEventListener("click", openSettings);
   cancelSettingsBtn.addEventListener("click", closeSettings);
   applySettingsBtn.addEventListener("click", applySettings);
+  testSoundBtn.addEventListener("click", testSound);
   settingsModal.addEventListener("click", function(e){
     if(e.target === settingsModal) closeSettings();
   });
