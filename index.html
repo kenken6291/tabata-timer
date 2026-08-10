@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>TABATA / インターバルタイマー</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg-ready: #16181d;
+    --bg-work: #d9432e;
+    --bg-rest: #1f6f78;
+    --bg-done: #1c8c53;
+    --ink: #f3efe6;
+    --ink-dim: rgba(243,239,230,0.56);
+    --panel: rgba(0,0,0,0.18);
+    --panel-line: rgba(243,239,230,0.16);
+    --accent-line: rgba(243,239,230,0.9);
+  }
+
+  *{ box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+  html, body{ margin: 0; height: 100%; overscroll-behavior: none; }
+
+  body{
+    background: var(--bg-ready);
+    color: var(--ink);
+    font-family: 'Space Grotesk', system-ui, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 100dvh;
+    padding: max(20px, env(safe-area-inset-top)) 20px max(20px, env(safe-area-inset-bottom));
+    transition: background-color .35s ease;
+    user-select: none;
+  }
+
+  body.state-work{ background: var(--bg-work); }
+  body.state-rest{ background: var(--bg-rest); }
+  body.state-done{ background: var(--bg-done); }
+
+  .top{
+    width: 100%;
+    max-width: 480px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 4px 2px 0;
+    flex-wrap: wrap;
+  }
+
+  .brand{
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: clamp(20px, 5.5vw, 26px);
+    letter-spacing: 0.14em;
+    color: var(--ink);
+    opacity: 0.92;
+  }
+  .brand span{ color: var(--ink-dim); }
+
+  .top-actions{ display: flex; align-items: center; gap: 8px; }
+
+  .icon-btn{
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    border: 1px solid var(--panel-line);
+    background: var(--panel);
+    color: var(--ink);
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    padding: 0;
+  }
+  .icon-btn:active{ transform: scale(0.94); }
+  .icon-btn:disabled{ opacity: 0.35; cursor: default; }
+
+  .round-badge{
+    font-size: clamp(12px, 3.4vw, 14px);
+    letter-spacing: 0.06em;
+    color: var(--ink-dim);
+    border: 1px solid var(--panel-line);
+    border-radius: 999px;
+    padding: 6px 13px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  main{
+    width: 100%;
+    max-width: 480px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    gap: clamp(10px, 3vh, 22px);
+  }
+
+  .phase-label{
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: clamp(22px, 8vw, 34px);
+    letter-spacing: 0.18em;
+    text-align: center;
+    line-height: 1;
+  }
+
+  .phase-sub{
+    font-size: clamp(12px, 3.4vw, 14px);
+    letter-spacing: 0.06em;
+    color: var(--ink-dim);
+    text-align: center;
+    margin-top: -6px;
+  }
+
+  .timer-wrap{
+    position: relative;
+    width: min(78vw, 340px);
+    aspect-ratio: 1 / 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  svg.ring{ position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
+  svg.ring circle{ fill: none; }
+  .ring-track{ stroke: rgba(0,0,0,0.22); stroke-width: 10; }
+  .ring-progress{ stroke: var(--accent-line); stroke-width: 10; stroke-linecap: round; transition: stroke-dashoffset 0.2s linear; }
+
+  .time-display{
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: clamp(70px, 24vw, 128px);
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.01em;
+  }
+
+  .set-counter{
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--panel);
+    border: 1px solid var(--panel-line);
+    border-radius: 999px;
+    padding: 10px 22px;
+    font-size: clamp(15px, 4.2vw, 18px);
+    letter-spacing: 0.04em;
+  }
+  .set-counter .num{ font-weight: 700; }
+  .set-counter .divider{ color: var(--ink-dim); }
+
+  .dots{ display: flex; gap: 7px; flex-wrap: wrap; justify-content: center; max-width: 300px; }
+  .dot{ width: 9px; height: 9px; border-radius: 50%; background: rgba(243,239,230,0.22); transition: background-color .25s ease, transform .25s ease; }
+  .dot.filled{ background: var(--ink); transform: scale(1.15); }
+  .dot.current{ background: var(--ink); box-shadow: 0 0 0 3px rgba(243,239,230,0.3); }
+
+  .controls{
+    width: 100%;
+    max-width: 480px;
+    display: grid;
+    grid-template-columns: 1fr 1.4fr 1fr;
+    gap: 10px;
+    padding-bottom: 4px;
+  }
+
+  button{
+    font-family: 'Space Grotesk', system-ui, sans-serif;
+    font-weight: 700;
+    font-size: clamp(14px, 4vw, 16px);
+    letter-spacing: 0.05em;
+    border-radius: 16px;
+    border: 1px solid var(--panel-line);
+    padding: 18px 10px;
+    cursor: pointer;
+    background: var(--panel);
+    color: var(--ink);
+    transition: transform .12s ease, background-color .12s ease;
+  }
+  button:active{ transform: scale(0.96); }
+
+  #startBtn{ background: var(--ink); color: #16181d; border-color: var(--ink); }
+  #startBtn.is-pause{ background: transparent; color: var(--ink); border-color: var(--accent-line); }
+  button:disabled{ opacity: 0.4; cursor: default; }
+
+  footer{
+    max-width: 480px;
+    width: 100%;
+    text-align: center;
+    color: var(--ink-dim);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    padding-top: 6px;
+  }
+
+  /* ---- settings modal ---- */
+  .modal-backdrop{
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.55);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    z-index: 20;
+  }
+  .modal-backdrop.open{ display: flex; }
+
+  .modal-card{
+    width: 100%;
+    max-width: 360px;
+    background: #1b1d22;
+    border: 1px solid var(--panel-line);
+    border-radius: 20px;
+    padding: 22px 22px 18px;
+    color: var(--ink);
+  }
+
+  .modal-title{
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 22px;
+    letter-spacing: 0.1em;
+    margin-bottom: 16px;
+  }
+
+  .field{ margin-bottom: 14px; }
+  .field label{
+    display: block;
+    font-size: 12px;
+    letter-spacing: 0.05em;
+    color: var(--ink-dim);
+    margin-bottom: 6px;
+  }
+  .field input{
+    width: 100%;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid var(--panel-line);
+    border-radius: 10px;
+    color: var(--ink);
+    font-size: 16px;
+    padding: 11px 12px;
+    font-family: 'Space Grotesk', system-ui, sans-serif;
+  }
+  .field input:focus{ outline: 2px solid var(--accent-line); outline-offset: 1px; }
+  .field .hint{ font-size: 11px; color: var(--ink-dim); margin-top: 4px; }
+
+  .modal-actions{ display: flex; gap: 10px; margin-top: 18px; }
+  .modal-actions button{ flex: 1; padding: 13px 10px; }
+  #applySettingsBtn{ background: var(--ink); color: #16181d; border-color: var(--ink); }
+
+  @media (max-width: 360px){
+    .controls{ grid-template-columns: 1fr 1.3fr 1fr; gap: 8px; }
+    button{ padding: 15px 6px; }
+  }
+</style>
+</head>
+<body class="state-ready">
+
+  <div class="top">
+    <div class="brand">TABATA<span id="brandSub">/4:00</span></div>
+    <div class="top-actions">
+      <button class="icon-btn" id="soundBtn" title="音声のオン/オフ" aria-label="音声のオン/オフ">🔊</button>
+      <button class="icon-btn" id="settingsBtn" title="設定" aria-label="設定">⚙</button>
+      <div class="round-badge" id="totalClock">04:00</div>
+    </div>
+  </div>
+
+  <main>
+    <div>
+      <div class="phase-label" id="phaseLabel">準備中</div>
+      <div class="phase-sub" id="phaseSub">スタートを押してください</div>
+    </div>
+
+    <div class="timer-wrap">
+      <svg class="ring" viewBox="0 0 200 200">
+        <circle class="ring-track" cx="100" cy="100" r="90"></circle>
+        <circle class="ring-progress" id="ringProgress" cx="100" cy="100" r="90"
+                stroke-dasharray="565.48" stroke-dashoffset="0"></circle>
+      </svg>
+      <div class="time-display" id="timeDisplay">5</div>
+    </div>
+
+    <div class="set-counter">
+      <span>SET</span>
+      <span class="num" id="setNow">0</span>
+      <span class="divider">/</span>
+      <span id="setTotal">8</span>
+    </div>
+
+    <div class="dots" id="dots"></div>
+  </main>
+
+  <div class="controls">
+    <button id="resetBtn">リセット</button>
+    <button id="startBtn">スタート</button>
+    <button id="skipBtn">スキップ</button>
+  </div>
+
+  <footer id="footerText">20秒運動 &middot; 10秒休憩 &middot; 8セット</footer>
+
+  <!-- 設定モーダル -->
+  <div class="modal-backdrop" id="settingsModal">
+    <div class="modal-card">
+      <div class="modal-title">設定</div>
+
+      <div class="field">
+        <label for="workInput">運動時間（秒）</label>
+        <input type="number" id="workInput" min="5" max="120" step="1">
+      </div>
+
+      <div class="field">
+        <label for="restInput">休憩時間（秒）</label>
+        <input type="number" id="restInput" min="0" max="120" step="1">
+      </div>
+
+      <div class="field">
+        <label for="setsInput">セット数</label>
+        <input type="number" id="setsInput" min="1" max="20" step="1">
+        <div class="hint">変更を適用するとタイマーはリセットされます</div>
+      </div>
+
+      <div class="modal-actions">
+        <button id="cancelSettingsBtn">キャンセル</button>
+        <button id="applySettingsBtn">適用してリセット</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ---- 設定（変更可能） ----
+  let WORK_SEC = 20;
+  let REST_SEC = 10;
+  let TOTAL_SETS = 8;
+  const READY_SEC = 5;
+
+  // ---- 状態 ----
+  let phase = "ready";     // ready | work | rest | done
+  let currentSet = 0;
+  let remaining = READY_SEC;
+  let running = false;
+  let hasStarted = false;
+  let tickHandle = null;
+  let lastTick = null;
+  let partialMs = 0;
+  let elapsedWorkoutSec = 0;
+  let lastAnnouncedRemaining = null;
+
+  // ---- 音声 ----
+  let soundOn = true;
+  let audioCtx = null;
+
+  function ensureAudioCtx(){
+    if(!audioCtx){
+      try{
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }catch(e){ audioCtx = null; }
+    }
+    if(audioCtx && audioCtx.state === "suspended"){
+      audioCtx.resume();
+    }
+  }
+
+  function playBeep(freq, dur, delay){
+    if(!soundOn || !audioCtx) return;
+    const startAt = audioCtx.currentTime + (delay || 0);
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(freq, startAt);
+    gain.gain.setValueAtTime(0.0001, startAt);
+    gain.gain.exponentialRampToValueAtTime(0.28, startAt + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, startAt + dur);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(startAt);
+    osc.stop(startAt + dur + 0.02);
+  }
+
+  function speak(text, delayMs){
+    if(!soundOn || !("speechSynthesis" in window)) return;
+    const run = function(){
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = "ja-JP";
+      u.rate = 1.05;
+      u.volume = 1;
+      window.speechSynthesis.speak(u);
+    };
+    if(delayMs) setTimeout(run, delayMs); else run();
+  }
+
+  function announceCountIfNeeded(){
+    if(remaining <= 3 && remaining >= 1 && (phase === "work" || phase === "rest" || phase === "ready")){
+      if(lastAnnouncedRemaining !== remaining){
+        lastAnnouncedRemaining = remaining;
+        speak(String(remaining));
+      }
+    }
+  }
+
+  function announcePhaseChange(){
+    lastAnnouncedRemaining = null;
+    if(phase === "work"){
+      playBeep(880, 0.16);
+      playBeep(1046, 0.16, 0.12);
+      speak("セット" + currentSet + "、運動", 220);
+    } else if(phase === "rest"){
+      playBeep(440, 0.22);
+      speak("休憩", 200);
+    } else if(phase === "done"){
+      playBeep(659, 0.15, 0);
+      playBeep(784, 0.15, 0.16);
+      playBeep(988, 0.28, 0.32);
+      speak("トレーニング終了です。お疲れさまでした", 500);
+    }
+  }
+
+  // ---- 要素参照 ----
+  const body = document.body;
+  const phaseLabel = document.getElementById("phaseLabel");
+  const phaseSub = document.getElementById("phaseSub");
+  const timeDisplay = document.getElementById("timeDisplay");
+  const setNow = document.getElementById("setNow");
+  const setTotal = document.getElementById("setTotal");
+  const totalClock = document.getElementById("totalClock");
+  const brandSub = document.getElementById("brandSub");
+  const footerText = document.getElementById("footerText");
+  const startBtn = document.getElementById("startBtn");
+  const resetBtn = document.getElementById("resetBtn");
+  const skipBtn = document.getElementById("skipBtn");
+  const soundBtn = document.getElementById("soundBtn");
+  const settingsBtn = document.getElementById("settingsBtn");
+  const dotsWrap = document.getElementById("dots");
+  const ringProgress = document.getElementById("ringProgress");
+
+  const settingsModal = document.getElementById("settingsModal");
+  const workInput = document.getElementById("workInput");
+  const restInput = document.getElementById("restInput");
+  const setsInput = document.getElementById("setsInput");
+  const applySettingsBtn = document.getElementById("applySettingsBtn");
+  const cancelSettingsBtn = document.getElementById("cancelSettingsBtn");
+
+  const RING_CIRC = 2 * Math.PI * 90;
+  ringProgress.setAttribute("stroke-dasharray", RING_CIRC.toFixed(2));
+
+  function computeTotalWorkoutSec(){
+    return (WORK_SEC + REST_SEC) * TOTAL_SETS - REST_SEC;
+  }
+  let TOTAL_WORKOUT_SEC = computeTotalWorkoutSec();
+
+  function formatTime(totalSec){
+    const m = Math.floor(totalSec/60);
+    const s = Math.floor(totalSec%60);
+    return (m<10?"0":"")+m+":"+(s<10?"0":"")+s;
+  }
+
+  function refreshStaticLabels(){
+    setTotal.textContent = TOTAL_SETS;
+    brandSub.textContent = "/" + formatTime(TOTAL_WORKOUT_SEC);
+    footerText.textContent = WORK_SEC + "秒運動 · " + REST_SEC + "秒休憩 · " + TOTAL_SETS + "セット";
+  }
+
+  function buildDots(){
+    dotsWrap.innerHTML = "";
+    for(let i=1;i<=TOTAL_SETS;i++){
+      const d = document.createElement("div");
+      d.className = "dot";
+      d.dataset.set = i;
+      dotsWrap.appendChild(d);
+    }
+  }
+
+  function updateDots(){
+    const dots = dotsWrap.querySelectorAll(".dot");
+    dots.forEach((d,idx)=>{
+      const setIdx = idx+1;
+      d.classList.remove("filled","current");
+      if(phase !== "ready" && phase !== "done" && setIdx === currentSet){
+        d.classList.add("current");
+      } else if(setIdx < currentSet || phase === "done"){
+        d.classList.add("filled");
+      }
+    });
+  }
+
+  function phaseDurationFor(p){
+    if(p==="ready") return READY_SEC;
+    if(p==="work") return WORK_SEC;
+    if(p==="rest") return REST_SEC;
+    return 1;
+  }
+
+  function updateRing(){
+    const dur = phaseDurationFor(phase);
+    const frac = dur > 0 ? (remaining-1+ (partialMs/1000)) / dur : 0;
+    const clamped = Math.max(0, Math.min(1, frac));
+    const offset = RING_CIRC * (1 - clamped);
+    ringProgress.style.strokeDashoffset = offset.toFixed(2);
+  }
+
+  function render(){
+    body.className = "state-" + (phase === "ready" ? "ready" : phase);
+
+    if(phase === "ready"){
+      phaseLabel.textContent = "準備中";
+      phaseSub.textContent = running ? "もうすぐ開始します" : "スタートを押してください";
+      setNow.textContent = "0";
+    } else if(phase === "work"){
+      phaseLabel.textContent = "運動中";
+      phaseSub.textContent = "がんばれ！";
+      setNow.textContent = currentSet;
+    } else if(phase === "rest"){
+      phaseLabel.textContent = "休憩中";
+      phaseSub.textContent = currentSet < TOTAL_SETS ? "次のセットに備えて" : "ラストスパート";
+      setNow.textContent = currentSet;
+    } else if(phase === "done"){
+      phaseLabel.textContent = "終了！";
+      phaseSub.textContent = "お疲れさまでした";
+      setNow.textContent = TOTAL_SETS;
+    }
+
+    timeDisplay.textContent = phase === "done" ? "0" : remaining;
+    totalClock.textContent = formatTime(Math.max(0, TOTAL_WORKOUT_SEC - elapsedWorkoutSec));
+    updateDots();
+    updateRing();
+
+    startBtn.textContent = running ? "一時停止" : (phase==="done" ? "スタート" : (!hasStarted ? "スタート" : "再開"));
+    startBtn.classList.toggle("is-pause", running);
+    startBtn.disabled = (phase === "done");
+    skipBtn.disabled = (phase === "done") || !hasStarted;
+    settingsBtn.disabled = running;
+  }
+
+  function nextPhase(){
+    if(phase === "ready"){
+      phase = "work";
+      currentSet = 1;
+      remaining = WORK_SEC;
+    } else if(phase === "work"){
+      if(currentSet >= TOTAL_SETS){
+        phase = "done";
+        running = false;
+        stopTicking();
+      } else {
+        phase = "rest";
+        remaining = REST_SEC;
+      }
+    } else if(phase === "rest"){
+      currentSet += 1;
+      phase = "work";
+      remaining = WORK_SEC;
+    }
+    partialMs = 0;
+    announcePhaseChange();
+  }
+
+  function tick(ts){
+    if(!running) return;
+    if(lastTick === null) lastTick = ts;
+    const delta = ts - lastTick;
+    lastTick = ts;
+    partialMs -= delta;
+
+    if(phase === "work" || phase === "rest"){
+      elapsedWorkoutSec = Math.min(TOTAL_WORKOUT_SEC, elapsedWorkoutSec + delta/1000);
+    }
+
+    while(partialMs <= 0 && running){
+      partialMs += 1000;
+      remaining -= 1;
+      if(remaining <= 0){
+        nextPhase();
+        if(phase === "done") break;
+      } else {
+        announceCountIfNeeded();
+      }
+    }
+
+    render();
+    if(running && phase !== "done"){
+      tickHandle = requestAnimationFrame(tick);
+    }
+  }
+
+  function startTicking(){
+    lastTick = null;
+    tickHandle = requestAnimationFrame(tick);
+  }
+
+  function stopTicking(){
+    if(tickHandle) cancelAnimationFrame(tickHandle);
+    tickHandle = null;
+  }
+
+  function handleStart(){
+    if(phase === "done") return;
+    ensureAudioCtx();
+    if(running){
+      running = false;
+      stopTicking();
+      if("speechSynthesis" in window) window.speechSynthesis.cancel();
+      render();
+      return;
+    }
+    running = true;
+    hasStarted = true;
+    lastAnnouncedRemaining = null;
+    startTicking();
+    render();
+  }
+
+  function handleReset(){
+    running = false;
+    stopTicking();
+    if("speechSynthesis" in window) window.speechSynthesis.cancel();
+    phase = "ready";
+    currentSet = 0;
+    remaining = READY_SEC;
+    partialMs = 0;
+    elapsedWorkoutSec = 0;
+    hasStarted = false;
+    lastAnnouncedRemaining = null;
+    render();
+  }
+
+  function handleSkip(){
+    if(!hasStarted || phase === "done") return;
+    partialMs = 0;
+    remaining = 0;
+    nextPhase();
+    render();
+  }
+
+  function toggleSound(){
+    soundOn = !soundOn;
+    soundBtn.textContent = soundOn ? "🔊" : "🔇";
+    if(!soundOn && "speechSynthesis" in window) window.speechSynthesis.cancel();
+  }
+
+  function openSettings(){
+    workInput.value = WORK_SEC;
+    restInput.value = REST_SEC;
+    setsInput.value = TOTAL_SETS;
+    settingsModal.classList.add("open");
+  }
+
+  function closeSettings(){
+    settingsModal.classList.remove("open");
+  }
+
+  function clampInt(val, min, max, fallback){
+    const n = parseInt(val, 10);
+    if(isNaN(n)) return fallback;
+    return Math.min(max, Math.max(min, n));
+  }
+
+  function applySettings(){
+    WORK_SEC = clampInt(workInput.value, 5, 120, WORK_SEC);
+    REST_SEC = clampInt(restInput.value, 0, 120, REST_SEC);
+    TOTAL_SETS = clampInt(setsInput.value, 1, 20, TOTAL_SETS);
+
+    TOTAL_WORKOUT_SEC = computeTotalWorkoutSec();
+    refreshStaticLabels();
+    buildDots();
+    handleReset();
+    closeSettings();
+  }
+
+  startBtn.addEventListener("click", handleStart);
+  resetBtn.addEventListener("click", handleReset);
+  skipBtn.addEventListener("click", handleSkip);
+  soundBtn.addEventListener("click", toggleSound);
+  settingsBtn.addEventListener("click", openSettings);
+  cancelSettingsBtn.addEventListener("click", closeSettings);
+  applySettingsBtn.addEventListener("click", applySettings);
+  settingsModal.addEventListener("click", function(e){
+    if(e.target === settingsModal) closeSettings();
+  });
+
+  refreshStaticLabels();
+  buildDots();
+  render();
+})();
+</script>
+</body>
+</html>
